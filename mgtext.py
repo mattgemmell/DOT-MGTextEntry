@@ -87,8 +87,15 @@ class MGText(MenuOption):
 	def cleanup(self):
 		self.entered_text = ''
 		self.display_map = []
+		self.display_ranges = []
 	
 	def update_display_map(self):
+		"""
+		Builds two datastructures:
+		- display_map is an array of rows of the display, with each entry being an array of that row's options as strings.
+		- display_ranges is similar, but each row-array contains dictionaries that are ranges of where the corresponding option renders on the display.
+		"""
+	
 		self.display_map = []
 		self.display_ranges = []
 		options_set = self.uppercase_set if self.caps_on else self.lowercase_set
@@ -115,12 +122,14 @@ class MGText(MenuOption):
 			row_len += opt_len
 	
 	def index_of_range_containing(self, row, col):
+		"""
+		This allows us to move the cursor spatially when going to a different row. For example, consider moving from a row with only two lengthy options, to a row with seven single-character options. If option 2 of 2 was selected on the former row, we wouldn't just want option 2 to be selected on the latter row after the move, because the cursor would seem to jump way over to the left. What we really want is to "move to whatever option is directly above/below the one I already had selected", which is what this method (and the display_ranges structure) allows.
+		"""
 		if row >= 0 and row < len(self.display_ranges) and col >= 0 and col < self.cols:
 			row_ranges = self.display_ranges[row]
 			index = len(row_ranges) - 1
 			for range in reversed(row_ranges):
 				if col >= range['start']:
-					
 					break
 				index -= 1
 		return index
@@ -141,6 +150,7 @@ class MGText(MenuOption):
 			self.selection['option'] = self.index_of_range_containing(self.selection['row'], sel_orig_col)
 			
 		elif direction == _LEFT:
+			# We wrap back onto the previous row when appropriate
 			self.selection['option'] = (sel_opt - 1) % len(self.display_map[sel_row])
 			# Check to see if we wrapped around
 			if self.selection['option'] > sel_opt or len(self.display_map[sel_row]) == 1:
@@ -149,6 +159,7 @@ class MGText(MenuOption):
 				self.selection['option'] = len(self.display_map[self.selection['row']]) - 1
 				
 		elif direction == _RIGHT:
+			# We wrap forward onto the next row when appropriate
 			self.selection['option'] = (sel_opt + 1) % len(self.display_map[sel_row])
 			# Check to see if we wrapped around
 			if self.selection['option'] < sel_opt or len(self.display_map[sel_row]) == 1:
@@ -168,6 +179,7 @@ class MGText(MenuOption):
 			self.first_displayed_row = sel_row - 1
 	
 	def render_row(self, row):
+		# Returns the actual rendered full text of a row, with all annotations
 		result = ""
 		if row >= 0 and row < len(self.display_map):
 			row_opts = self.display_map[row]
@@ -210,7 +222,7 @@ class MGText(MenuOption):
 					else:
 						result += " "
 					
-					# Any end-of-row padding required
+					# Add any end-of-row padding required
 					result += (" " * (self.cols - (len(result) + 1)))
 					
 					# Scroll indicators
@@ -285,6 +297,7 @@ class MGText(MenuOption):
 				self.mode = _MODE_ENTRY
 				return False
 
+		# Handle all the selectable options and commands
 		opt = self.display_map[self.selection['row']][self.selection['option']]
 		if opt == self.space_symbol:
 			self.entered_text += " "
@@ -325,6 +338,7 @@ class MGText(MenuOption):
 			self.initialized = True
 
 		if self.mode == _MODE_ENTRY:
+			# Output the editing row
 			text_len = len(self.entered_text)
 			if text_len > self.cols:
 				menu.write_row(0, self.abbreviation_icon + self.entered_text[text_len - self.cols + 1:])
@@ -342,6 +356,7 @@ class MGText(MenuOption):
 				menu.clear_row(2)
 			
 		else:
+			# Handle the confirmation screen
 			if len(self.entered_text) > self.cols:
 				menu.write_option(0, self.entered_text, scroll=True, scroll_repeat=2000)
 			else:
