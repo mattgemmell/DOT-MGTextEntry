@@ -1,3 +1,16 @@
+#! /usr/bin/python
+
+"""
+MGText
+Text-entry plugin for Pimoroni's menu system for the Raspberry Pi Display-O-Tron.
+
+Code and info: https://github.com/mattgemmell/DOT-MGTextEntry
+
+By: Matt Gemmell
+	http://mattgemmell.com/
+	http://twitter.com/mattgemmell
+"""
+
 from dot3k.menu import MenuOption
 
 _UP = 0
@@ -238,7 +251,7 @@ class MGText(MenuOption):
 	
 	def delete(self):
 		# Delete last character entered
-		if not self.confirming and len(self.entered_text) > 0:
+		if (not self.confirming) and len(self.entered_text) > 0:
 			self.entered_text = self.entered_text[:-1]
 		
 	def left(self):
