@@ -1,8 +1,5 @@
 from dot3k.menu import MenuOption
 
-_MODE_ENTRY = 0
-_MODE_CONFIRM = 1
-
 _UP = 0
 _DOWN = 1
 _LEFT = 2
@@ -12,7 +9,6 @@ class MGText(MenuOption):
 	def __init__(self):
 
 		self.cols = 16
-		self.mode = _MODE_ENTRY
 		self.initialized = False
 		
 		self.scroll_up_icon = chr(0)
@@ -55,11 +51,16 @@ class MGText(MenuOption):
 		self.symbols_set.append(self.line_break)
 		self.symbols_set.extend(self.commands)
 		
+		self.confirm_accept = "Yes"
+		self.confirm_cancel = "No"
+		self.confirm_quit = "Quit"
+		self.confirm_set = [self.confirm_accept, self.confirm_cancel, self.confirm_quit]
+		
 		self.display_map = [] # 2D array of options
 		self.display_ranges = [] # 2D array of range-arrays with option extents
 
 		self.entered_text = ''
-		self.confirm = 0
+		self.confirming = False
 
 		MenuOption.__init__(self)
 
@@ -73,12 +74,11 @@ class MGText(MenuOption):
 
 	def begin(self):
 		self.initialized = False
-		self.mode = _MODE_ENTRY
+		self.confirming = False
 		self.symbols_mode = False
 		self.selection = {'row': 0, 'option': 0}
 		self.first_displayed_row = 0
 		self.set_value('')
-		self.confirm = 0
 		self.update_display_map()
 
 	def setup(self, config):
@@ -101,6 +101,8 @@ class MGText(MenuOption):
 		options_set = self.uppercase_set if self.caps_on else self.lowercase_set
 		if self.symbols_mode:
 			options_set = self.symbols_set
+		if self.confirming:
+			options_set = self.confirm_set
 		
 		row_len = 0
 		self.display_map.append([])
@@ -236,47 +238,33 @@ class MGText(MenuOption):
 	
 	def delete(self):
 		# Delete last character entered
-		if len(self.entered_text) > 0:
+		if not self.confirming and len(self.entered_text) > 0:
 			self.entered_text = self.entered_text[:-1]
 		
 	def left(self):
-		if self.mode == _MODE_CONFIRM:
-			self.confirm = (self.confirm + 1) % 3
-			return True
-		
 		self.move_cursor(_LEFT)
 		return True
 	
 	def right(self):
-		if self.mode == _MODE_CONFIRM:
-			self.confirm = (self.confirm - 1) % 3
-			return True
-		
 		self.move_cursor(_RIGHT)
 		return True
 
 	def up(self):
-		if self.mode == _MODE_CONFIRM:
-			return True
-		
 		self.move_cursor(_UP)
 		return True
 
 	def down(self):
-		if self.mode == _MODE_CONFIRM:
-			return True
-		
 		self.move_cursor(_DOWN)
 		return True
 
 	def cancel(self):
-		if self.mode == _MODE_CONFIRM:
-			return True
-		elif self.cancel_aborts:
+		if self.cancel_aborts:
 			# Confirm quit if we have text
 			if len(self.entered_text > 0):
-				self.confirm = 2
-				self.mode = _MODE_CONFIRM
+				self.confirming = True
+				self.update_display_map()
+				self.selection = {'row': 0, 'option': 1}
+				self.first_displayed_row = 0
 				return False
 			else:
 				return True
@@ -286,44 +274,61 @@ class MGText(MenuOption):
 		return False
 
 	def select(self):
-		if self.mode == _MODE_CONFIRM:
-			if self.confirm == 1: # Yes
-				return True
-			elif self.confirm == 2: # Quit
-				self.cancel_input = True
-				self.mode = _MODE_ENTRY
-				return True
-			else: # No
-				self.mode = _MODE_ENTRY
-				return False
-
 		# Handle all the selectable options and commands
 		opt = self.display_map[self.selection['row']][self.selection['option']]
+		
 		if opt == self.space_symbol:
 			self.entered_text += " "
+			
 		elif opt == self.caps_command:
 			self.caps_on = not (self.caps_on)
 			self.symbols_mode = False
 			self.update_display_map()
 			self.selection = {'row': 0, 'option': 0}
 			self.first_displayed_row = 0
+			
 		elif opt == self.symbols_command:
 			self.symbols_mode = not (self.symbols_mode)
 			self.update_display_map()
 			self.selection = {'row': 0, 'option': 0}
 			self.first_displayed_row = 0
+			
 		elif opt == self.delete_command:
 			self.delete()
+			
 		elif opt == self.cancel_command:
-			self.confirm = 2
-			self.mode = _MODE_CONFIRM
-			self.selection = {'row': 0, 'option': 0}
+			self.confirming = True
+			self.update_display_map()
+			self.selection = {'row': 0, 'option': 1}
 			self.first_displayed_row = 0
+			
 		elif opt == self.commit_command:
-			self.confirm = 0
-			self.mode = _MODE_CONFIRM
+			self.confirming = True
+			self.update_display_map()
+			self.selection = {'row': 0, 'option': 1}
+			self.first_displayed_row = 0
+		
+		elif opt == self.confirm_accept:
+			self.confirming = False
+			self.update_display_map()
 			self.selection = {'row': 0, 'option': 0}
 			self.first_displayed_row = 0
+			return True
+		
+		elif opt == self.confirm_cancel:
+			self.confirming = False
+			self.update_display_map()
+			self.selection = {'row': 0, 'option': 0}
+			self.first_displayed_row = 0
+		
+		elif opt == self.confirm_quit:
+			self.confirming = False
+			self.update_display_map()
+			self.selection = {'row': 0, 'option': 0}
+			self.first_displayed_row = 0
+			self.cancel_input = True
+			return True
+
 		else:
 			self.entered_text += opt
 		
@@ -337,7 +342,7 @@ class MGText(MenuOption):
 			menu.lcd.create_char(3, [0, 0, 0, 0, 0, 0, 0, 28])  # placeholder icon
 			self.initialized = True
 
-		if self.mode == _MODE_ENTRY:
+		if not self.confirming:
 			# Output the editing row
 			text_len = len(self.entered_text)
 			if text_len > self.cols:
@@ -360,13 +365,6 @@ class MGText(MenuOption):
 			if len(self.entered_text) > self.cols:
 				menu.write_option(0, self.entered_text, scroll=True, scroll_repeat=2000)
 			else:
-				menu.write_row(0, self.entered_text + (self.placeholder_icon * (self.cols - len(self.entered_text))))
+				menu.write_row(0, self.entered_text + (" " * (self.cols - len(self.entered_text))))
 			menu.write_row(1, 'Confirm?')
-			confirm_options = ''
-			if self.confirm == 1:
-				confirm_options = '[Yes]No Quit '
-			elif self.confirm == 0:
-				confirm_options = ' Yes[No]Quit '
-			else:
-				confirm_options = ' Yes No[Quit]'
-			menu.write_row(2, confirm_options)
+			menu.write_row(2, self.render_row(self.first_displayed_row))
